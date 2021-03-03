@@ -82,9 +82,6 @@ const getAllReservations = function(guest_id, limit = 10) {
     .then(res => {
       return res.rows;
     });
-
-  
-  // return getAllProperties(null, 2);
 };
 exports.getAllReservations = getAllReservations;
 
@@ -97,12 +94,60 @@ exports.getAllReservations = getAllReservations;
  * @return {Promise<[{}]>}  A promise to the properties.
  */
 const getAllProperties = function(options, limit = 10) {
-  let limitedProperties = {};
-  const queryString = `SELECT *
-  FROM properties
-  LIMIT $1;`;
+  const queryParams = [];
 
-  return pool.query(queryString, [limit])
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
+
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+  }
+
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+    if (options.city) {
+      queryString += `AND rating >= $${queryParams.length} `;
+    } else {
+      queryString += `WHERE rating >= $${queryParams.length} `;
+    }
+  }
+
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night}`);
+    if (!options.city && !options.minimum_rating) {
+      queryString += `WHERE cost_per_night > $${queryParams.length} `;
+    } else {
+      queryString += `AND cost_per_night > $${queryParams.length} `;
+    }
+  }
+
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night}`);
+    if (!options.city && !options.minimum_rating && !options.minimum_price_per_night) {
+      queryString += `WHERE cost_per_night < $${queryParams.length} `;
+    } else {
+      queryString += `AND cost_per_night < $${queryParams.length} `;
+    }
+  }
+
+
+  queryParams.push(limit);
+  queryString += `
+  GROUP BY properties.id
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+
+
+  // console.log("queryString", queryString);
+  // console.log("queryParams", queryParams);
+  // console.log("options", options);
+
+  return pool.query(queryString, queryParams)
     .then(res => res.rows);
   
 };
